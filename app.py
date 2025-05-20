@@ -1,8 +1,19 @@
 from flask import Flask, request, jsonify
-import joblib
 import pandas as pd
 import os
 import traceback # Moved import traceback to the top for convention
+import numpy
+import sklearn
+import joblib
+import pandas
+import sys
+
+print(f"Python version (training): {sys.version}")
+print(f"NumPy version (training): {numpy.__version__}")
+print(f"Scikit-learn version (training): {sklearn.__version__}")
+print(f"Joblib version (training): {joblib.__version__}")
+print(f"Pandas version (training): {pandas.__version__}")
+from sklearn.ensemble import IsolationForest
 
 app = Flask(__name__)
 
@@ -10,8 +21,11 @@ app = Flask(__name__)
 model_path = 'isolation_forest_model.joblib'
 model = None
 try:
-    model = joblib.dump(model_path)
-    print(f"✅ Model loaded successfully from {model_path}")
+    best_model = IsolationForest(n_estimators=100, contamination='auto', random_state=42)
+best_model.fit('processed_data_ready_for_train.csv')
+
+model_filename = 'isolation_forest_model.joblib'
+joblib.dump(best_model, model_filename)
 except FileNotFoundError:
     print(f"❌ ERROR: Model file not found at {model_path}. Ensure it's in the correct path and included in your Git repository.")
 except Exception as e:
