@@ -10,6 +10,11 @@ model_path = 'isolation_forest_model.joblib'
 model = None
 try:
     model = joblib.load(model_path)
+    # ...
+except FileNotFoundError as e:
+    print(f"❌ ERROR: Could not load model: {e}")
+try:
+    model = joblib.load(model_path)
     print(f"✅ Model loaded successfully from {model_path}")
 except FileNotFoundError:
     print(f"❌ ERROR: Model file not found at {model_path}. Ensure it's in the correct path and included in your Git repository.")
