@@ -1,35 +1,29 @@
 from flask import Flask, request, jsonify
+import joblib
 import pandas as pd
 import os
-import traceback # Moved import traceback to the top for convention
-import numpy
-import sklearn
-import joblib
-import pandas
-import sys
+import traceback
 
-print(f"Python version (training): {sys.version}")
-print(f"NumPy version (training): {numpy.__version__}")
-print(f"Scikit-learn version (training): {sklearn.__version__}")
-print(f"Joblib version (training): {joblib.__version__}")
-print(f"Pandas version (training): {pandas.__version__}")
-from sklearn.ensemble import IsolationForest
+# from sklearn.ensemble import IsolationForest # Không cần thiết cho việc load
 
 app = Flask(__name__)
 
 # Đường dẫn đến file model
 model_path = 'isolation_forest_model.joblib'
-model = None
-try:
-    best_model = IsolationForest(n_estimators=100, contamination='auto', random_state=42)
-best_model.fit('processed_data_ready_for_train.csv')
+model = None  # Biến này sẽ chứa model được tải
 
-model_filename = 'isolation_forest_model.joblib'
-joblib.dump(best_model, model_filename)
+try:
+    # --- CHỈ TẢI MODEL ---
+    model = joblib.load(model_path)
+    print(f"✅ Model loaded successfully from {model_path}")
 except FileNotFoundError:
-    print(f"❌ ERROR: Model file not found at {model_path}. Ensure it's in the correct path and included in your Git repository.")
+    print(f"❌ ERROR: Model file not found at {model_path}. Ensure it's in the correct path (root of your project, alongside app.py) and included in your Git repository.")
 except Exception as e:
     print(f"❌ ERROR: Could not load model: {e}")
+    traceback.print_exc()
+
+# ... phần còn lại của code (required_features, các route @app.route, v.v...) ...
+# (Giữ nguyên như phiên bản đúng ở câu trả lời trước)
 
 # Danh sách các features mà model đã được huấn luyện và mong đợi ở đầu vào
 # Đảm bảo thứ tự này khớp với thứ tự khi huấn luyện model.
@@ -50,7 +44,7 @@ required_features = [
 
 @app.route('/')
 def home():
-    if model:
+    if model is not None: # Check if model was successfully loaded
         return "✅ AI Model API is running and model is loaded!"
     else:
         return "⚠️ AI Model API is running BUT THE MODEL FAILED TO LOAD. Check server logs."
@@ -74,48 +68,25 @@ def predict_endpoint():
     except KeyError as e:
         return jsonify({'error': f'Missing feature in input: {str(e)}'}), 400
 
-
     input_df = pd.DataFrame([feature_values_in_order], columns=required_features)
 
     try:
-        # Get raw prediction (-1 for anomaly, 1 for normal)
-        prediction_raw = model.predict(input_df) # Returns an array, e.g., np.array([-1]) or np.array([1])
-
-        # Determine textual label based on the notebook's logic:
-        # "# -1 = Anomaly (bất thường), 1 = Normal (bình thường)"
-        # print("Prediction:", "Anomaly" if prediction[0] == -1 else "Normal")
+        prediction_raw = model.predict(input_df)
         textual_prediction_label = "Anomaly" if prediction_raw[0] == -1 else "Normal"
-
-        # Determine the binary is_rug_pull flag
-        # If textual_prediction_label is "Anomaly", then is_rug_pull is 1. Otherwise, it's 0.
         is_rug_pull = 1 if textual_prediction_label == "Anomaly" else 0
-
-        # Get anomaly score (lower scores are more anomalous for IsolationForest's decision_function)
-        # Note: The notebook image uses anomaly_score = best_model.decision_function(sample_df)
-        # The decision_function of IsolationForest returns scores where more negative is more anomalous.
-        # A common convention is that values close to -0.5 are anomalies, and values close to 0.5 are normal.
-        # Your previous print of "Anomaly Score: 0.1310..." with "Prediction: Normal" suggests your
-        # interpretation or thresholding might be specific.
-        # The `predict` method's -1/1 output is based on the `contamination` parameter.
-        # `decision_function` provides the raw scores.
-
-        anomaly_score_value = None # Initialize variable for the score
+        anomaly_score_value = None
         if hasattr(model, "decision_function"):
-            # .decision_function usually returns an array of scores, one per sample
             anomaly_score_value = model.decision_function(input_df)[0]
 
         return jsonify({
-            'prediction_label': textual_prediction_label, # NEW: Textual label like in the notebook print
-            'is_rug_pull_prediction': is_rug_pull,        # Existing: 1 if Anomaly, 0 if Normal
-            'anomaly_score': float(anomaly_score_value) if anomaly_score_value is not None else None, # Anomaly score from decision_function
-            'raw_model_prediction': int(prediction_raw[0]) # Raw output from model.predict() (-1 or 1)
+            'prediction_label': textual_prediction_label,
+            'is_rug_pull_prediction': is_rug_pull,
+            'anomaly_score': float(anomaly_score_value) if anomaly_score_value is not None else None,
+            'raw_model_prediction': int(prediction_raw[0])
         })
     except Exception as e:
-        traceback.print_exc() # Prints full traceback to server logs for debugging
+        traceback.print_exc()
         return jsonify({'error': f'An unexpected error occurred during prediction: {str(e)}'}), 500
 
 if __name__ == '__main__':
-    # Render will provide PORT via environment variable
     port = int(os.environ.get('PORT', 5000))
-    # debug=False for production
-    app.run(host='0.0.0.0', port=port, debug=False)
